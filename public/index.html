@@ -23,6 +23,14 @@
         <button type="submit">Show Route</button>
         <button id="clear-button">Clear Route</button>
         <button id="current-location-button">Current Location</button>
+        <div id="hazard-report">
+          <button class="rdblck" onclick="reportHazard('roadblock')">
+            Report Roadblock
+          </button>
+          <button class="accident" onclick="reportHazard('accident')">
+            Report Accident
+          </button>
+        </div>
       </div>
     </form>
     <ul id="suggestions-list"></ul>
@@ -30,10 +38,7 @@
     <div id="info"></div>
     <div id="map"></div>
     <!-- Suggestions list -->
-    <div id="hazard-report">
-      <button onclick="reportHazard('roadblock')">Report Roadblock</button>
-      <button onclick="reportHazard('accident')">Report Accident</button>
-    </div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://api.tomtom.com/maps-sdk-for-web/cdn/5.x/5.0.0/maps-web.min.js"></script>
     <script src="script.js"></script>

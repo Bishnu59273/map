@@ -83,6 +83,37 @@ button[type="submit"]:hover {
   background-color: #d32f2f;
 }
 
+.accident {
+  padding: 10px 20px;
+  background-color: #f44336;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  margin-top: 10px;
+}
+
+.accident:hover {
+  background-color: #d32f2f;
+}
+.rdblck {
+  padding: 10px 20px;
+  background-color: #ef6832;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  margin-top: 10px;
+}
+
+.rdblck:hover {
+  background-color: rgba(205, 41, 41, 0.858);
+}
+
 /* Current Location Button Styling */
 #current-location-button {
   padding: 10px 20px;
