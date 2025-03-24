@@ -7,6 +7,57 @@ const MAPS_API_URL =
   "https://api.openrouteservice.org/v2/directions/driving-car";
 const API_KEY = "5b3ce3597851110001cf6248a5f299b4c21d4febb149cf83d068a58d";
 
+const mongoose = require("mongoose");
+
+const MONGO_URI =
+  "mongodb+srv://bishnugcloud:MApjxukGAv8iDaQY@bishnu-p1.ltsa4.mongodb.net/work?retryWrites=true&w=majority";
+
+mongoose
+  .connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log("MongoDB connected!"))
+  .catch((err) => console.error("MongoDB connection error:", err));
+//
+const Hazard = require("./models/Hazard"); // Import the model
+
+app.use(express.json()); // Parse JSON body
+
+app.post("/api/hazards", async (req, res) => {
+  try {
+    const { type, latitude, longitude } = req.body;
+
+    if (!type || !latitude || !longitude) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const newHazard = new Hazard({ type, latitude, longitude });
+    await newHazard.save();
+
+    res.status(201).json({ message: "Hazard reported successfully!" });
+  } catch (error) {
+    console.error("Error saving hazard:", error);
+    res.status(500).json({ error: "Failed to save hazard" });
+  }
+});
+
+// Dummy hazards data
+// const hazards = [
+//   { id: 1, type: "Roadblock", location: "Main Street" },
+//   { id: 2, type: "Accident", location: "Highway 21" },
+// ];
+// app.get("/api/hazards", (req, res) => {
+//   res.json(hazards);
+// });
+
+app.get("/api/hazards", async (req, res) => {
+  try {
+    const hazards = await Hazard.find();
+    res.json(hazards);
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // CORS headers for enabling cross-origin requests
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*"); // Allow all domains (for development)

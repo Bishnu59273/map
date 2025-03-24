@@ -6,21 +6,39 @@ L.tileLayer("https://a.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 
 let routePolyline;
 let destinationMarker;
+let userMarker;
 let incidentMarkers = [];
-let userMarker; // Store the user's location marker here
+let manualLocation = null; // Store manually selected location
 
-// Function to set the map to the user's current location
+// Allow user to select a manual location by clicking on the map
+function enableManualLocationSelection() {
+  map.on("click", (e) => {
+    const { lat, lng } = e.latlng;
+    manualLocation = { latitude: lat, longitude: lng };
+
+    // Set marker at selected location
+    if (userMarker) {
+      userMarker.setLatLng([lat, lng]).bindPopup("Manual Location").openPopup();
+    } else {
+      userMarker = L.marker([lat, lng])
+        .addTo(map)
+        .bindPopup("Manual Location")
+        .openPopup();
+    }
+
+    console.log(`Manual location set: ${lat}, ${lng}`);
+  });
+}
+
+// Center the map to the user's location
 function centerMapToCurrentLocation() {
   navigator.geolocation.getCurrentPosition(
-    async (position) => {
+    (position) => {
       const { latitude, longitude } = position.coords;
+      map.setView([latitude, longitude], 13);
 
-      // Center the map to the user's location
-      map.setView([latitude, longitude], 13); // Set the map view to user's location
-
-      // Store the user's location marker in the userMarker variable
       if (userMarker) {
-        userMarker.setLatLng([latitude, longitude]); // Update marker if it exists
+        userMarker.setLatLng([latitude, longitude]);
       } else {
         userMarker = L.marker([latitude, longitude])
           .addTo(map)
@@ -28,200 +46,217 @@ function centerMapToCurrentLocation() {
           .openPopup();
       }
     },
-    () => {
-      alert("Unable to retrieve your location.");
-    }
+    () => alert("Unable to retrieve your location.")
   );
 }
 
-// Add event listener to "Current Location" button
-document
-  .getElementById("current-location-button")
-  .addEventListener("click", (e) => {
-    e.preventDefault();
-    centerMapToCurrentLocation(); // Center the map to the user's current location
+// Fetch and display hazards along the route
+async function fetchAndDisplayRouteHazards(routeCoordinates) {
+  try {
+    const response = await fetch("/api/hazards");
+    if (!response.ok) throw new Error("Failed to fetch hazards");
+
+    const hazards = await response.json();
+    const filteredHazards = hazards.filter((hazard) =>
+      isHazardNearRoute(hazard, routeCoordinates)
+    );
+
+    // Clear previous hazard markers
+    incidentMarkers.forEach((marker) => map.removeLayer(marker));
+    incidentMarkers = [];
+
+    filteredHazards.forEach((hazard) => {
+      if (hazard.latitude !== undefined && hazard.longitude !== undefined) {
+        const color =
+          hazard.type.toLowerCase() === "accident"
+            ? "red"
+            : hazard.type.toLowerCase() === "roadblock"
+            ? "orange"
+            : "blue";
+
+        const marker = L.circleMarker([hazard.latitude, hazard.longitude], {
+          color: color,
+        })
+          .addTo(map)
+          .bindPopup(
+            `${hazard.type} at ${
+              hazard.location ? hazard.location : "Unknown location"
+            }`
+          );
+
+        incidentMarkers.push(marker);
+      } else {
+        console.error("Missing Lat/Lng for hazard:", hazard);
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching hazards:", error);
+  }
+}
+
+// Check if a hazard is near the route
+function isHazardNearRoute(hazard, routeCoordinates) {
+  const threshold = 0.005; // Adjust this value for sensitivity (~500m)
+  return routeCoordinates.some(([lat, lon]) => {
+    const distance = Math.sqrt(
+      Math.pow(lat - hazard.latitude, 2) + Math.pow(lon - hazard.longitude, 2)
+    );
+    return distance < threshold;
   });
+}
 
-navigator.geolocation.getCurrentPosition(
-  async (position) => {
-    const { latitude, longitude } = position.coords;
+// Update handleDestinationSearch to call the new function
+async function handleDestinationSearch(event) {
+  event.preventDefault();
+  const destinationInput = document.getElementById("destination").value.trim();
+  if (!destinationInput) return;
 
-    // Center the map to the user's location
-    map.setView([latitude, longitude], 13); // Set the map view to user's location
+  try {
+    const geoResponse = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+        destinationInput
+      )}`
+    );
+    const geoData = await geoResponse.json();
+    if (geoData.length === 0) {
+      document.getElementById("info").innerText = "Destination not found.";
+      return;
+    }
 
-    // Store the user's location marker in the userMarker variable
-    userMarker = L.marker([latitude, longitude])
-      .addTo(map)
-      .bindPopup("You are here")
-      .openPopup();
+    const { lat: destLat, lon: destLon } = geoData[0];
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      const { latitude, longitude } = position.coords;
+      const routeResponse = await fetch(
+        `/api/traffic?sourceLat=${latitude}&sourceLng=${longitude}&destLat=${destLat}&destLng=${destLon}`
+      );
+      const routeData = await routeResponse.json();
 
-    const destinationInput = document.getElementById("destination");
-    const suggestionsList = document.getElementById("suggestions-list");
-
-    // Handle input event for destination search
-    destinationInput.addEventListener("input", async (e) => {
-      const query = e.target.value.trim();
-      if (query.length < 3) {
-        suggestionsList.innerHTML = ""; // Clear suggestions for short input
-        suggestionsList.style.display = "none"; // Hide suggestions list
+      if (!routeData.features || !routeData.features[0]?.geometry) {
+        document.getElementById("info").innerText = "Invalid route data.";
         return;
       }
 
-      const geocodeResponse = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-          query
-        )}`
-      );
-      const geocodeData = await geocodeResponse.json();
-
-      suggestionsList.innerHTML = ""; // Clear previous suggestions
-
-      if (geocodeData.length > 0) {
-        suggestionsList.style.display = "block"; // Show the suggestions list
-        geocodeData.forEach((suggestion) => {
-          const li = document.createElement("li");
-          li.textContent = suggestion.display_name;
-          li.addEventListener("click", () => {
-            // Set the destination input value to the selected suggestion
-            destinationInput.value = suggestion.display_name;
-            suggestionsList.innerHTML = ""; // Clear suggestions after selection
-            suggestionsList.style.display = "none"; // Hide suggestions list after selection
-          });
-          suggestionsList.appendChild(li);
-        });
-      } else {
-        suggestionsList.innerHTML = "<li>No suggestions found</li>";
-        suggestionsList.style.display = "block"; // Show the suggestions list
-      }
-    });
-
-    // Handle form submission for showing route
-    document
-      .getElementById("destination-form")
-      .addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const destinationName = destinationInput.value.trim();
-
-        const geocodeResponse = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-            destinationName
-          )}`
-        );
-        const geocodeData = await geocodeResponse.json();
-
-        if (geocodeData.length === 0) {
-          document.getElementById("info").innerText = "Destination not found.";
-          return;
-        }
-
-        const [destLon, destLat] = [geocodeData[0].lon, geocodeData[0].lat];
-
-        const response = await fetch(
-          `/api/traffic?sourceLat=${latitude}&sourceLng=${longitude}&destLat=${destLat}&destLng=${destLon}`
-        );
-        const data = await response.json();
-
-        if (data.error) {
-          document.getElementById("info").innerText =
-            "Error fetching traffic data";
-          return;
-        }
-
-        // Ensure the route data exists and is valid
-        if (data.features && data.features[0] && data.features[0].geometry) {
-          const routeCoordinates = data.features[0].geometry.coordinates.map(
-            ([lon, lat]) => [lat, lon]
-          );
-
-          console.log("Route Coordinates:", routeCoordinates); // Debugging step
-
-          // Clear any existing markers and polylines (except userMarker)
-          map.eachLayer((layer) => {
-            if (
-              layer instanceof L.Marker ||
-              layer instanceof L.Polyline ||
-              layer instanceof L.CircleMarker
-            ) {
-              if (layer !== userMarker) {
-                // Do not remove the user's location marker
-                map.removeLayer(layer);
-              }
-            }
-          });
-
-          // Draw the route polyline with different colors
-          routePolyline = L.polyline(routeCoordinates, {
-            color: "green",
-          }).addTo(map);
-
-          // Simulated traffic incident data (e.g., roadblocks, accidents)
-          const trafficIncidents = [
-            {
-              lat: routeCoordinates[2][0],
-              lng: routeCoordinates[2][1],
-              type: "roadblock",
-              message: "Roadblock ahead! Use alternate route.",
-            },
-            {
-              lat: routeCoordinates[4][0],
-              lng: routeCoordinates[4][1],
-              type: "accident",
-              message: "Accident reported here. Expect delays.",
-            },
-            {
-              lat: routeCoordinates[6][0],
-              lng: routeCoordinates[6][1],
-              type: "construction",
-              message: "Construction zone ahead. Slow down.",
-            },
-          ];
-
-          console.log("Traffic Incidents:", trafficIncidents); // Debugging step
-
-          // Place incident markers at the traffic incident locations
-          incidentMarkers = trafficIncidents.map((incident) => {
-            const markerColor =
-              incident.type === "roadblock" ? "red" : "orange";
-            return L.circleMarker([incident.lat, incident.lng], {
-              color: markerColor,
-              radius: 8,
-            })
-              .addTo(map)
-              .bindPopup(incident.message); // Show incident message on marker click
-          });
-
-          // Add a marker for the destination with a popup
-          destinationMarker = L.marker([destLat, destLon])
-            .addTo(map)
-            .bindPopup(`Destination: ${destinationName}`)
-            .openPopup();
-        } else {
-          document.getElementById("info").innerText = "Invalid route data.";
-        }
-      });
-
-    // Add event listener to "Clear Route" button
-    document.getElementById("clear-button").addEventListener("click", () => {
-      // Remove all layers (route, markers, etc.), except the user marker
+      // Clear existing markers and route, except userMarker
       map.eachLayer((layer) => {
-        if (
-          layer instanceof L.Marker ||
-          layer instanceof L.Polyline ||
-          layer instanceof L.CircleMarker
-        ) {
-          if (layer !== userMarker) {
-            // Do not remove the user's location marker
-            map.removeLayer(layer);
-          }
+        if (layer instanceof L.Marker || layer instanceof L.Polyline) {
+          if (layer !== userMarker) map.removeLayer(layer);
         }
       });
 
-      // Clear the destination input and info
-      document.getElementById("destination").value = "";
-      document.getElementById("info").innerText = "";
+      // Draw route
+      const routeCoordinates = routeData.features[0].geometry.coordinates.map(
+        ([lon, lat]) => [lat, lon]
+      );
+      routePolyline = L.polyline(routeCoordinates, { color: "green" }).addTo(
+        map
+      );
+
+      // Add destination marker
+      destinationMarker = L.marker([destLat, destLon])
+        .addTo(map)
+        .bindPopup(`Destination: ${destinationInput}`)
+        .openPopup();
+
+      // Fetch and display hazards along the route
+      fetchAndDisplayRouteHazards(routeCoordinates);
     });
-  },
-  () => {
-    alert("Geolocation not supported or permission denied.");
+  } catch (error) {
+    console.error("Error fetching route:", error);
   }
-);
+}
+// Report hazard
+// async function reportHazard(type) {
+//   if (!navigator.geolocation) {
+//     alert("Geolocation is not supported by your browser.");
+//     return;
+//   }
+
+//   navigator.geolocation.getCurrentPosition(
+//     async (position) => {
+//       const { latitude, longitude } = position.coords;
+//       try {
+//         const response = await fetch("/api/hazards", {
+//           method: "POST",
+//           headers: { "Content-Type": "application/json" },
+//           body: JSON.stringify({ type, latitude, longitude }),
+//         });
+//         const data = await response.json();
+//         alert(data.message || "Hazard reported successfully!");
+//         fetchAndDisplayHazards(); // Refresh hazards after reporting
+//       } catch (error) {
+//         console.error("Error reporting hazard:", error);
+//       }
+//     },
+//     () => alert("Could not retrieve location.")
+//   );
+// }
+
+async function reportHazard(type) {
+  let latitude, longitude;
+
+  if (manualLocation) {
+    // Use manually selected location
+    latitude = manualLocation.latitude;
+    longitude = manualLocation.longitude;
+  } else if (navigator.geolocation) {
+    // Use current location if manual location is not set
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        latitude = position.coords.latitude;
+        longitude = position.coords.longitude;
+        await sendHazardReport(type, latitude, longitude);
+      },
+      () => alert("Could not retrieve location.")
+    );
+    return;
+  } else {
+    alert("Geolocation is not supported by your browser.");
+    return;
+  }
+
+  await sendHazardReport(type, latitude, longitude);
+}
+
+// Separate function to send hazard data
+async function sendHazardReport(type, latitude, longitude) {
+  try {
+    const response = await fetch("/api/hazards", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, latitude, longitude }),
+    });
+    const data = await response.json();
+    alert(data.message || "Hazard reported successfully!");
+    fetchAndDisplayHazards(); // Refresh hazards after reporting
+  } catch (error) {
+    console.error("Error reporting hazard:", error);
+  }
+}
+
+// Clear route
+document.getElementById("clear-button").addEventListener("click", () => {
+  map.eachLayer((layer) => {
+    if (
+      layer instanceof L.Marker ||
+      layer instanceof L.Polyline ||
+      layer instanceof L.CircleMarker
+    ) {
+      if (layer !== userMarker) map.removeLayer(layer);
+    }
+  });
+  document.getElementById("destination").value = "";
+  document.getElementById("info").innerText = "";
+});
+
+// Event listeners
+document
+  .getElementById("destination-form")
+  .addEventListener("submit", handleDestinationSearch);
+document
+  .getElementById("current-location-button")
+  .addEventListener("click", centerMapToCurrentLocation);
+
+// Auto-center map on load
+centerMapToCurrentLocation();
+enableManualLocationSelection();
+fetchAndDisplayHazards();
