@@ -9,6 +9,18 @@ let destinationMarker;
 let userMarker;
 let incidentMarkers = [];
 let manualLocation = null; // Store manually selected location
+let routeCoordinates = []; // Initialize as an empty array
+
+function calculateRoute(start, end) {
+  // Example API call to fetch route
+  fetch(`/api/getRoute?start=${start}&end=${end}`)
+    .then((response) => response.json())
+    .then((data) => {
+      routeCoordinates = data.route; // Store route coordinates
+      fetchAndDisplayRouteHazards(routeCoordinates); // Call function only after getting route data
+    })
+    .catch((error) => console.error("Error fetching route:", error));
+}
 
 // Allow user to select a manual location by clicking on the map
 function enableManualLocationSelection() {
@@ -49,19 +61,33 @@ function centerMapToCurrentLocation() {
     () => alert("Unable to retrieve your location.")
   );
 }
+function isHazardNearRoute(hazard, routeCoordinates) {
+  return routeCoordinates.some(([lat, lon]) =>
+    isHazardNearPoint(hazard, lat, lon)
+  );
+}
 
-// Fetch and display hazards along the route
+function isHazardNearPoint(hazard, lat, lon) {
+  const RADIUS = 0.01; // Approx 1km (adjust as needed)
+  return (
+    Math.abs(hazard.latitude - lat) <= RADIUS &&
+    Math.abs(hazard.longitude - lon) <= RADIUS
+  );
+}
+
+// Fetch and display hazards along the route as lines instead of circles
 async function fetchAndDisplayRouteHazards(routeCoordinates) {
   try {
     const response = await fetch("/api/hazards");
     if (!response.ok) throw new Error("Failed to fetch hazards");
 
     const hazards = await response.json();
+
     const filteredHazards = hazards.filter((hazard) =>
       isHazardNearRoute(hazard, routeCoordinates)
     );
 
-    // Clear previous hazard markers
+    // Clear previous markers
     incidentMarkers.forEach((marker) => map.removeLayer(marker));
     incidentMarkers = [];
 
@@ -74,17 +100,27 @@ async function fetchAndDisplayRouteHazards(routeCoordinates) {
             ? "orange"
             : "blue";
 
-        const marker = L.circleMarker([hazard.latitude, hazard.longitude], {
-          color: color,
-        })
-          .addTo(map)
-          .bindPopup(
-            `${hazard.type} at ${
-              hazard.location ? hazard.location : "Unknown location"
-            }`
+        // Find nearby route points
+        const affectedPoints = routeCoordinates.filter(([lat, lon]) =>
+          isHazardNearPoint(hazard, lat, lon)
+        );
+
+        console.log("Affected Points for Hazard:", hazard.type, affectedPoints);
+
+        if (affectedPoints.length > 1) {
+          const hazardLine = L.polyline(affectedPoints, {
+            color: color,
+            weight: 6,
+            opacity: 1,
+            dashArray: "10, 10",
+          }).addTo(map);
+
+          hazardLine.bindPopup(
+            `<b>${hazard.type}</b><br>Location: ${hazard.location || "Unknown"}`
           );
 
-        incidentMarkers.push(marker);
+          incidentMarkers.push(hazardLine);
+        }
       } else {
         console.error("Missing Lat/Lng for hazard:", hazard);
       }
@@ -94,15 +130,13 @@ async function fetchAndDisplayRouteHazards(routeCoordinates) {
   }
 }
 
-// Check if a hazard is near the route
-function isHazardNearRoute(hazard, routeCoordinates) {
+// Helper function to check if a route point is near a hazard
+function isHazardNearPoint(hazard, lat, lon) {
   const threshold = 0.005; // Adjust this value for sensitivity (~500m)
-  return routeCoordinates.some(([lat, lon]) => {
-    const distance = Math.sqrt(
-      Math.pow(lat - hazard.latitude, 2) + Math.pow(lon - hazard.longitude, 2)
-    );
-    return distance < threshold;
-  });
+  const distance = Math.sqrt(
+    Math.pow(lat - hazard.latitude, 2) + Math.pow(lon - hazard.longitude, 2)
+  );
+  return distance < threshold;
 }
 
 // Update handleDestinationSearch to call the new function
@@ -259,4 +293,4 @@ document
 // Auto-center map on load
 centerMapToCurrentLocation();
 enableManualLocationSelection();
-fetchAndDisplayHazards();
+fetchAndDisplayRouteHazards(routeCoordinates);
