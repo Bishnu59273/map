@@ -8,6 +8,12 @@
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     />
+    <!-- Toastify CSS -->
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css"
+    />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -64,21 +70,15 @@
       </div>
     </div>
     <script src="/socket.io/socket.io.js"></script>
+    <!-- Toastify JS -->
+    <script
+      type="text/javascript"
+      src="https://cdn.jsdelivr.net/npm/toastify-js"
+    ></script>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <!-- <script src="https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.21.0/maps/maps-web.min.js"></script> -->
     <script src="https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/maps/maps-web.min.js"></script>
-
-    <script>
-      function showToast(message) {
-        const toast = document.getElementById("toast");
-        toast.innerText = message;
-        toast.className = "toast show";
-        setTimeout(() => {
-          toast.className = "toast";
-        }, 3000);
-      }
-    </script>
 
     <script src="script.js"></script>
   </body>

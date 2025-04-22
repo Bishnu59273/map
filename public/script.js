@@ -13,8 +13,15 @@ let manualLocation = null;
 let routeCoordinates = [];
 
 // Toast function (assuming it's defined elsewhere)
-function showToast(message) {
-  alert(message); // Replace with custom toast if needed
+function showToast(message, color = "#333") {
+  Toastify({
+    text: message,
+    duration: 4000,
+    gravity: "top", // top or bottom
+    position: "right", // left, center, or right
+    backgroundColor: color,
+    stopOnFocus: true,
+  }).showToast();
 }
 
 // Auto-center map on load
@@ -161,7 +168,8 @@ async function fetchAndDisplayRouteHazards(routeCoordinates) {
         }).addTo(map);
 
         hazardLine.bindPopup(
-          `<b>${hazard.type}</b><br>Location: ${hazard.location || "Unknown"}`
+          `<b>${hazard.type}</b>`
+          // `<b>${hazard.type}</b><br>Location: ${hazard.location || "Unknown"}`
         );
 
         incidentMarkers.push(hazardLine);
@@ -280,6 +288,14 @@ document
 // Socket alert listener
 socket.on("receive-alert", (data) => {
   console.log("📥 Received alert:", data);
-  showToast(`🚨 ${data.message}`);
+
+  const color =
+    data.type === "accident"
+      ? "#ff4d4d" // red
+      : data.type === "roadblock"
+      ? "#ffa500" // orange
+      : "#007bff"; // blue (default)
+
+  showToast(`🚨 ${data.message}`, color);
   fetchAndDisplayRouteHazards(routeCoordinates);
 });
